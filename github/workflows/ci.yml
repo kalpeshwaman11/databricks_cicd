@@ -1,46 +1,41 @@
-name: Databricks CI
+name: CI/CD for Databricks
 
 on:
   push:
     branches:
-      - b
-  pull_request:
+      - main    
 
 jobs:
-  databricks-deploy:
+  deploy:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout code
+    - name: Checkout repository
       uses: actions/checkout@v2
-      # This step checks out the repository code to the GitHub Actions runner.
 
     - name: Set up Python
       uses: actions/setup-python@v2
       with:
-        python-version: '3.8'
-      # This step sets up a Python 3.8 environment.
+        python-version: '3.x'
 
-    - name: Install Databricks CLI
-      run: pip install databricks-cli
-      # This step installs the Databricks CLI using pip.
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install databricks-cli
 
     - name: Configure Databricks CLI
       env:
         DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
         DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
       run: |
-        databricks configure --token <<EOF
-        $DATABRICKS_HOST
-        $DATABRICKS_TOKEN
-        EOF
-      # This step configures the Databricks CLI using the host and token from GitHub Secrets.
+        mkdir -p ~/.databricks
+        echo -e "[DEFAULT]\nhost = $DATABRICKS_HOST\ntoken = $DATABRICKS_TOKEN" > ~/.databricks/config
 
-    - name: Run Databricks Job
-      env:
-        DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
-        DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+    - name: Deploy Notebooks to Databricks
       run: |
-        JOB_ID=$(databricks jobs list --output JSON | jq -r '.jobs[] | select(.settings.name=="your-job-name") | .job_id')
-        databricks jobs run-now --job-id $JOB_ID
-      # This step retrieves the job ID and runs the specified Databricks job.
+        databricks workspace import_dir ./ /Workspace/Users/kalpesh.azure.subscription@gmail.com/release --overwrite
+
+    - name: Create or Update Databricks Job
+      run: |
+        databricks jobs create --json-file ./release/jobs/job_config.json || \
+        databricks jobs reset --job-id $(databricks jobs list | jq -r '.jobs[] | select(.settings.name == "YourJobName") | .job_id') --json-file ./release/jobs/job_config.json
