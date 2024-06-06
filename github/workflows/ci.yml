@@ -1,0 +1,41 @@
+name: CI/CD for Databricks
+
+on:
+  push:
+    branches:
+      - main    
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v2
+
+    - name: Set up Python
+      uses: actions/setup-python@v2
+      with:
+        python-version: '3.x'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install databricks-cli
+
+    - name: Configure Databricks CLI
+      env:
+        DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
+        DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+      run: |
+        mkdir -p ~/.databricks
+        echo -e "[DEFAULT]\nhost = $DATABRICKS_HOST\ntoken = $DATABRICKS_TOKEN" > ~/.databricks/config
+
+    - name: Deploy Notebooks to Databricks
+      run: |
+        databricks workspace import_dir ./ /Workspace/Users/kalpesh.azure.subscription@gmail.com/release --overwrite
+
+    - name: Create or Update Databricks Job
+      run: |
+        databricks jobs create --json-file ./release/jobs/job_config.json || \
+        databricks jobs reset --job-id $(databricks jobs list | jq -r '.jobs[] | select(.settings.name == "YourJobName") | .job_id') --json-file ./release/jobs/job_config.json
